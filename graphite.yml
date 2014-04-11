@@ -1,0 +1,130 @@
+---
+- hosts: statsd-graphite
+  remote_user: chistyakov
+  tasks:
+  - name: setup pip
+    apt: name=python-pip state=present
+
+  - name: setup gcc
+    apt: name=gcc state=present
+
+  - name: setup python-dev
+    apt: name=python-dev state=present
+
+  - name: setup whisper
+    pip: name=whisper state=present
+
+  - name: setup carbon
+    pip: name=carbon state=present
+
+  - name: setup graphite-web
+    pip: name=graphite-web state=present
+
+  - name: setup python-django
+    apt: name=python-django state=present
+
+  - name: setup python-django-tagging
+    apt: name=python-django-tagging state=present
+
+  - name: install python-cairo
+    apt: name=python-cairo state=present
+
+  - name: setup gunicorn
+    apt: name=gunicorn state=present
+
+  # stopasgroup does not work in stock supervisor from Ubuntu 12.04, so let's
+  # use a version from pip
+  - name: remove stock supervisor
+    apt: name=supervisor state=absent
+
+  - name: setup supervisor from pip
+    pip: name=supervisor state=present
+
+  - name: put upstart service desc
+    template: src=graphite/supervisor.conf dest=/etc/init/supervisor.conf owner=root group=root mode=0644
+
+  - name: make a link to supervisord.conf
+    file: state=link src=/etc/supervisor/supervisord.conf dest=/usr/local/etc/supervisord.conf
+
+  # Does not work well on Ubuntu 12.04
+  - name: remove stock twisted
+    apt: name=python-twisted state=absent
+
+  - name: install twisted
+    pip: name=Twisted version=11.1.0 state=present
+
+  - name: add a graphite user
+    user: name=graphite state=present
+
+  - name: start supervisor service
+    service: name=supervisor state=started
+
+  - name: put carbon config
+    template: src=graphite/carbon.conf dest=/opt/graphite/conf/carbon.conf owner=root group=root mode=0644
+
+  - name: put carbon storage schemas description
+    template: src=graphite/storage-schemas.conf dest=/opt/graphite/conf/storage-schemas.conf owner=root group=root mode=0644
+
+  - name: create supervisor.d conf dir
+    file: state=directory path=/etc/supervisor/conf.d owner=root group=root mode=0755
+
+  - name: create supervisor log dir
+    file: state=directory path=/var/log/supervisor owner=root group=root mode=0755
+
+  - name: put supervisord config file
+    template: src=graphite-supervisor/supervisord.conf dest=/etc/supervisor/supervisord.conf owner=root group=root mode=0644
+
+  - name: put carbon service descriptor
+    template: src=graphite-supervisor/carbon.conf dest=/etc/supervisor/conf.d/carbon.conf owner=root group=root mode=0644
+    notify:
+    - restart supervisor
+
+  - name: put graphite webapp's local settings
+    template: src=graphite/local_settings.py dest=/opt/graphite/webapp/graphite/local_settings.py owner=root group=root mode=0644
+
+  - name: make /opt/graphite/storage/log/webapp
+    file: path=/opt/graphite/storage/log/webapp state=directory owner=graphite
+
+  - name: put gunicorn service descriptor
+    template: src=graphite-supervisor/gunicorn.conf dest=/etc/supervisor/conf.d/gunicorn.conf owner=root group=root mode=0644
+    notify:
+    - restart supervisor
+
+  - name: install expect
+    apt: name=expect state=present
+
+  - name: set proper permissions on storage dir
+    file: path=/opt/graphite/storage state=directory owner=graphite
+
+  - name: put syncdb expect script
+    template: src=graphite/syncdb dest=/opt/graphite/storage/syncdb mode=0755
+
+  - name: sync the DB
+    command: bash -c "/opt/graphite/storage/syncdb && chown graphite /opt/graphite/storage/graphite.db" creates=/opt/graphite/storage/graphite.db
+
+  - name: install pystatsd
+    pip: name=pystatsd state=present
+
+  - name: install make
+    apt: name=make state=present
+
+  - name: install cpanm
+    apt: name=cpanminus state=present
+
+  - name: install Net::Statsd::Server
+    cpanm: name=Net::Statsd::Server
+
+  - name: add a statsd user
+    user: name=statsd state=present
+
+  - name: put Net::Statsd::Server config
+    template: src=graphite/localConfig.js dest=/home/statsd/localConfig.js owner=statsd group=statsd mode=0644
+
+  - name: put statsd service descriptor
+    template: src=graphite-supervisor/statsd.conf dest=/etc/supervisor/conf.d/statsd.conf owner=root group=root mode=0644
+    notify:
+    - restart supervisor
+
+  handlers:
+  - name: restart supervisor
+    service: name=supervisor state=restarted

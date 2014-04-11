@@ -1,0 +1,27 @@
+#!/usr/bin/expect --
+
+set timeout -1
+
+spawn bash -c "cd /opt/graphite/webapp/graphite && python manage.py syncdb"
+
+expect "Would you like to create one now? (yes/no):"
+
+send "yes\r"
+
+expect "Username (Leave blank to use"
+
+send "admin\r"
+
+expect "E-mail address:"
+
+send "alex@gitinsky.com\r"
+
+expect "Password:"
+
+send "{{ graphite_admin_password }}\r"
+
+expect "Password (again):"
+
+send "{{ graphite_admin_password }}\r"
+
+expect "No fixtures found."
